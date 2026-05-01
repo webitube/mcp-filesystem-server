@@ -33,6 +33,14 @@ type FileNode struct {
 	Children []*FileNode `json:"children,omitempty"`
 }
 
+type DirectoryNode struct {
+	Name      string           `json:"name"`
+	Path      string           `json:"path"`
+	FileCount int64            `json:"fileCount"` // number of files in this directory
+	Modified  time.Time        `json:"modified,omitempty"`
+	Children  []*DirectoryNode `json:"children,omitempty"`
+}
+
 // SearchResult represents a single match in a file
 type SearchResult struct {
 	FilePath    string

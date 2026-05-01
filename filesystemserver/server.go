@@ -133,19 +133,34 @@ func NewFilesystemServer(allowedDirs []string) (*server.MCPServer, error) {
 	), h.HandleReadMultipleFiles)
 
 	s.AddTool(mcp.NewTool(
-		"tree",
-		mcp.WithDescription("Returns a hierarchical JSON representation of a directory structure."),
-		mcp.WithString("path",
-			mcp.Description("Path of the directory to traverse"),
+		"file_tree",
+		mcp.WithDescription("Returns a hierarchical JSON representation of the entire file/directory tree starting at the given root path. Note: For large numbers of files, this can easily exceed the context size."),
+		mcp.WithString("starting_path",
+			mcp.Description("Starting Path of the file/directory tree to traverse"),
 			mcp.Required(),
 		),
-		mcp.WithNumber("depth",
+		mcp.WithNumber("max_depth",
 			mcp.Description("Maximum depth to traverse (default: 3)"),
 		),
 		mcp.WithBoolean("follow_symlinks",
 			mcp.Description("Whether to follow symbolic links (default: false)"),
 		),
-	), h.HandleTree)
+	), h.HandleFileTree)
+
+	s.AddTool(mcp.NewTool(
+		"directory_tree",
+		mcp.WithDescription("Returns a hierarchical JSON representation of the entire directory tree starting at the given directory. Note: Each directory node will contain the number of files in the folder."),
+		mcp.WithString("starting_path",
+			mcp.Description("Starting Path of the directory tree to traverse"),
+			mcp.Required(),
+		),
+		mcp.WithNumber("max_depth",
+			mcp.Description("Maximum depth to traverse (default: 3)"),
+		),
+		mcp.WithBoolean("follow_symlinks",
+			mcp.Description("Whether to follow symbolic links (default: false)"),
+		),
+	), h.HandleDirectoryTree)
 
 	s.AddTool(mcp.NewTool(
 		"delete_file",

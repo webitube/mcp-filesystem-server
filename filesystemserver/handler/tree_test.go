@@ -66,7 +66,7 @@ func TestHandleTree(t *testing.T) {
 			},
 		}
 
-		res, err := fsHandler.HandleTree(ctx, req)
+		res, err := fsHandler.HandleFileTree(ctx, req)
 		require.NoError(t, err)
 		require.False(t, res.IsError)
 
@@ -101,7 +101,7 @@ func TestHandleTree(t *testing.T) {
 			},
 		}
 
-		res, err := fsHandler.HandleTree(ctx, req)
+		res, err := fsHandler.HandleFileTree(ctx, req)
 		require.NoError(t, err)
 		require.False(t, res.IsError)
 
@@ -129,7 +129,7 @@ func TestHandleTree(t *testing.T) {
 			},
 		}
 
-		res, err := fsHandler.HandleTree(ctx, req)
+		res, err := fsHandler.HandleFileTree(ctx, req)
 		require.NoError(t, err)
 		require.False(t, res.IsError)
 
@@ -155,7 +155,7 @@ func TestHandleTree(t *testing.T) {
 			},
 		}
 
-		res, err := fsHandler.HandleTree(ctx, req)
+		res, err := fsHandler.HandleFileTree(ctx, req)
 		require.NoError(t, err)
 		require.False(t, res.IsError)
 
@@ -181,7 +181,7 @@ func TestHandleTree(t *testing.T) {
 			},
 		}
 
-		res, err := fsHandler.HandleTree(ctx, req)
+		res, err := fsHandler.HandleFileTree(ctx, req)
 		require.NoError(t, err)
 		require.True(t, res.IsError)
 
@@ -201,7 +201,7 @@ func TestHandleTree(t *testing.T) {
 			},
 		}
 
-		res, err := fsHandler.HandleTree(ctx, req)
+		res, err := fsHandler.HandleFileTree(ctx, req)
 		require.NoError(t, err)
 		require.True(t, res.IsError)
 	})
@@ -217,7 +217,7 @@ func TestHandleTree(t *testing.T) {
 			},
 		}
 
-		res, err := fsHandler.HandleTree(ctx, req)
+		res, err := fsHandler.HandleFileTree(ctx, req)
 		require.NoError(t, err)
 		require.True(t, res.IsError)
 	})
