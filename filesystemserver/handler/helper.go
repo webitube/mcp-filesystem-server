@@ -11,11 +11,30 @@ import (
 	"github.com/gabriel-vasile/mimetype"
 )
 
+// Note: This is a case-insensitive version of filepath.Abs().
+func filepathAbsCaseInsensitive(path string) (string, error) {
+	// 1. Get the standard absolute path (this preserves your input casing)
+	absPath, err := filepath.Abs(path)
+	if err != nil {
+		return "", err
+	}
+
+	// 2. Resolve symlinks and canonicalize casing
+	// Note: The file MUST exist for this to work correctly.
+	canonicalPath, err := filepath.EvalSymlinks(absPath)
+	if err != nil {
+		return absPath, err // Return the raw Abs path if file doesn't exist
+	}
+
+	return canonicalPath, nil
+}
+
 // isPathInAllowedDirs checks if a path is within any of the allowed directories
 func (fs *FilesystemHandler) isPathInAllowedDirs(path string) bool {
 	// Ensure path is absolute and clean
-	absPath, err := filepath.Abs(path)
+	absPath, err := filepathAbsCaseInsensitive(path)
 	if err != nil {
+		fmt.Errorf("isPathInAllowedDirs(): absPath=%s, err=%s\n", absPath, err)
 		return false
 	}
 
@@ -41,7 +60,7 @@ func (fs *FilesystemHandler) isPathInAllowedDirs(path string) bool {
 
 func (fs *FilesystemHandler) validatePath(requestedPath string) (string, error) {
 	// Always convert to absolute path first
-	abs, err := filepath.Abs(requestedPath)
+	abs, err := filepathAbsCaseInsensitive(requestedPath)
 	if err != nil {
 		return "", fmt.Errorf("invalid path: %w", err)
 	}
@@ -64,22 +83,18 @@ func (fs *FilesystemHandler) validatePath(requestedPath string) (string, error) 
 		parent := filepath.Dir(abs)
 		realParent, err := filepath.EvalSymlinks(parent)
 		if err != nil {
-			return "", fmt.Errorf("parent directory does not exist: %s", parent)
+			return "", fmt.Errorf("parent directory does not exist: %s; err=%s, realParent=%s", parent, err, realParent)
 		}
 
 		if !fs.isPathInAllowedDirs(realParent) {
-			return "", fmt.Errorf(
-				"access denied - parent directory outside allowed directories",
-			)
+			return "", fmt.Errorf("access denied - parent directory outside allowed directories: %s", realParent)
 		}
 		return abs, nil
 	}
 
 	// Check if the real path (after resolving symlinks) is still within allowed directories
 	if !fs.isPathInAllowedDirs(realPath) {
-		return "", fmt.Errorf(
-			"access denied - symlink target outside allowed directories",
-		)
+		return "", fmt.Errorf("access denied - symlink target outside allowed directories: %s", realPath)
 	}
 
 	return realPath, nil
