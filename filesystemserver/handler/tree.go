@@ -14,118 +14,41 @@ func (fs *FilesystemHandler) HandleFileTree(
 	ctx context.Context,
 	request mcp.CallToolRequest,
 ) (*mcp.CallToolResult, error) {
-	path, err := request.RequireString("starting_path")
-	if err != nil {
-		return nil, err
-	}
-
-	// Handle empty or relative paths like "." or "./" by converting to absolute path
+	path, _ := request.RequireString("starting_path")
 	if path == "." || path == "./" {
-		// Get current working directory
-		cwd, err := os.Getwd()
-		if err != nil {
-			return &mcp.CallToolResult{
-				Content: []mcp.Content{
-					mcp.TextContent{
-						Type: "text",
-						Text: fmt.Sprintf("Error resolving current directory: %v", err),
-					},
-				},
-				IsError: true,
-			}, nil
-		}
+		cwd, _ := os.Getwd()
 		path = cwd
 	}
 
-	// Extract depth parameter (optional, default: 3)
-	depth := 3 // Default value
-	if depthParam, err := request.RequireFloat("max_depth"); err == nil {
-		depth = int(depthParam)
+	depth := 3
+	if d, err := request.RequireFloat("max_depth"); err == nil {
+		depth = int(d)
 	}
 
-	// Extract follow_symlinks parameter (optional, default: false)
-	followSymlinks := false // Default value
-	if followParam, err := request.RequireBool("follow_symlinks"); err == nil {
-		followSymlinks = followParam
+	followSymlinks := false
+	if f, err := request.RequireBool("follow_symlinks"); err == nil {
+		followSymlinks = f
 	}
 
-	// Validate the path is within allowed directories
 	validPath, err := fs.validatePath(path)
 	if err != nil {
-		return &mcp.CallToolResult{
-			Content: []mcp.Content{
-				mcp.TextContent{
-					Type: "text",
-					Text: fmt.Sprintf("Error: %v", err),
-				},
-			},
-			IsError: true,
-		}, nil
+		return errorResult(err), nil
 	}
 
-	// Check if it's a directory
-	info, err := os.Stat(validPath)
+	// Build the tree and get totals
+	tree, totalFiles, totalDirs, err := fs.buildFileTreeWithTotals(validPath, depth, 0, followSymlinks)
 	if err != nil {
-		return &mcp.CallToolResult{
-			Content: []mcp.Content{
-				mcp.TextContent{
-					Type: "text",
-					Text: fmt.Sprintf("Error: %v", err),
-				},
-			},
-			IsError: true,
-		}, nil
+		return errorResult(err), nil
 	}
 
-	if !info.IsDir() {
-		return &mcp.CallToolResult{
-			Content: []mcp.Content{
-				mcp.TextContent{
-					Type: "text",
-					Text: "Error: The specified path is not a directory",
-				},
-			},
-			IsError: true,
-		}, nil
-	}
-
-	// Build the file tree structure
-	tree, err := fs.buildFileTree(validPath, depth, 0, followSymlinks)
-	if err != nil {
-		return &mcp.CallToolResult{
-			Content: []mcp.Content{
-				mcp.TextContent{
-					Type: "text",
-					Text: fmt.Sprintf("Error building directory tree: %v", err),
-				},
-			},
-			IsError: true,
-		}, nil
-	}
-
-	// Convert to JSON
-	jsonData, err := json.MarshalIndent(tree, "", "  ")
-	if err != nil {
-		return &mcp.CallToolResult{
-			Content: []mcp.Content{
-				mcp.TextContent{
-					Type: "text",
-					Text: fmt.Sprintf("Error generating JSON: %v", err),
-				},
-			},
-			IsError: true,
-		}, nil
-	}
-
-	// Create resource URI for the directory
+	jsonData, _ := json.MarshalIndent(tree, "", "  ")
 	resourceURI := pathToResourceURI(validPath)
 
-	// Return the result
 	return &mcp.CallToolResult{
 		Content: []mcp.Content{
 			mcp.TextContent{
 				Type: "text",
-				Text: fmt.Sprintf("Directory tree for %s (max depth: %d):\n\n%s", validPath, depth, string(jsonData)),
+				Text: fmt.Sprintf("File tree for %s\nTotals (to max. depth %d): %d files, %d directories\n\n%s", validPath, depth, totalFiles, totalDirs, string(jsonData)),
 			},
 			mcp.EmbeddedResource{
 				Type: "resource",
@@ -139,275 +62,183 @@ func (fs *FilesystemHandler) HandleFileTree(
 	}, nil
 }
 
-// buildFileTree builds a tree representation of the filesystem starting at the given path
-func (fs *FilesystemHandler) buildFileTree(path string, maxDepth int, currentDepth int, followSymlinks bool) (*FileNode, error) {
-	// Validate the path
+// buildFileTree builds a tree representation of the filesystem starting at the given starting path
+func (fs *FilesystemHandler) HandleDirectoryTree(
+	ctx context.Context,
+	request mcp.CallToolRequest,
+) (*mcp.CallToolResult, error) {
+	path, _ := request.RequireString("starting_path")
+	if path == "." || path == "./" {
+		cwd, _ := os.Getwd()
+		path = cwd
+	}
+
+	depth := 3
+	if d, err := request.RequireFloat("max_depth"); err == nil {
+		depth = int(d)
+	}
+
+	followSymlinks := false
+	if f, err := request.RequireBool("follow_symlinks"); err == nil {
+		followSymlinks = f
+	}
+
 	validPath, err := fs.validatePath(path)
 	if err != nil {
-		return nil, err
+		return errorResult(err), nil
 	}
 
-	// Get file info
+	// Build the directory tree and get totals
+	tree, totalFiles, totalDirs, err := fs.buildDirectoryTreeWithTotals(validPath, depth, 0, followSymlinks)
+	if err != nil {
+		return errorResult(err), nil
+	}
+
+	jsonData, _ := json.MarshalIndent(tree, "", "  ")
+	resourceURI := pathToResourceURI(validPath)
+
+	return &mcp.CallToolResult{
+		Content: []mcp.Content{
+			mcp.TextContent{
+				Type: "text",
+				Text: fmt.Sprintf("Directory tree for %s\nTotals (to max. depth %d): %d files, %d directories\n\n%s", validPath, depth, totalFiles, totalDirs, string(jsonData)),
+			},
+			mcp.EmbeddedResource{
+				Type: "resource",
+				Resource: mcp.TextResourceContents{
+					URI:      resourceURI,
+					MIMEType: "application/json",
+					Text:     string(jsonData),
+				},
+			},
+		},
+	}, nil
+}
+
+// buildFileTreeWithTotals builds a full tree and tracks cumulative file/directory counts.
+func (fs *FilesystemHandler) buildFileTreeWithTotals(path string, maxDepth int, currentDepth int, followSymlinks bool) (*FileNode, int, int, error) {
+	validPath, err := fs.validatePath(path)
+	if err != nil {
+		return nil, 0, 0, err
+	}
+
 	info, err := os.Stat(validPath)
 	if err != nil {
-		return nil, err
+		return nil, 0, 0, err
 	}
 
-	// Create the node
 	node := &FileNode{
 		Name:     filepath.Base(validPath),
 		Path:     validPath,
 		Modified: info.ModTime(),
 	}
 
-	// Set type and size
-	if info.IsDir() {
-		node.Type = "directory"
-
-		// If we haven't reached the max depth, process children
-		if currentDepth < maxDepth {
-			// Read directory entries
-			entries, err := os.ReadDir(validPath)
-			if err != nil {
-				return nil, err
-			}
-
-			// Process each entry
-			for _, entry := range entries {
-				entryPath := filepath.Join(validPath, entry.Name())
-
-				// Handle symlinks
-				if entry.Type()&os.ModeSymlink != 0 {
-					if !followSymlinks {
-						// Skip symlinks if not following them
-						continue
-					}
-
-					// Resolve symlink
-					linkDest, err := filepath.EvalSymlinks(entryPath)
-					if err != nil {
-						// Skip invalid symlinks
-						continue
-					}
-
-					// Validate the symlink destination is within allowed directories
-					if !fs.isPathInAllowedDirs(linkDest) {
-						// Skip symlinks pointing outside allowed directories
-						continue
-					}
-
-					entryPath = linkDest
-				}
-
-				// Recursively build child node
-				childNode, err := fs.buildFileTree(entryPath, maxDepth, currentDepth+1, followSymlinks)
-				if err != nil {
-					// Skip entries with errors
-					continue
-				}
-
-				// Add child to the current node
-				node.Children = append(node.Children, childNode)
-			}
-		}
-	} else {
+	if !info.IsDir() {
 		node.Type = "file"
 		node.Size = info.Size()
+		return node, 1, 0, nil
 	}
 
-	return node, nil
-}
+	node.Type = "directory"
+	totalFiles := 0
+	totalDirs := 1
 
-func (fs *FilesystemHandler) HandleDirectoryTree(
-	ctx context.Context,
-	request mcp.CallToolRequest,
-) (*mcp.CallToolResult, error) {
-	path, err := request.RequireString("starting_path")
-	if err != nil {
-		return nil, err
-	}
-
-	// Handle empty or relative paths like "." or "./" by converting to absolute path
-	if path == "." || path == "./" {
-		// Get current working directory
-		cwd, err := os.Getwd()
+	if currentDepth < maxDepth {
+		entries, err := os.ReadDir(validPath)
 		if err != nil {
-			return &mcp.CallToolResult{
-				Content: []mcp.Content{
-					mcp.TextContent{
-						Type: "text",
-						Text: fmt.Sprintf("Error resolving current directory: %v", err),
-					},
-				},
-				IsError: true,
-			}, nil
+			return node, totalFiles, totalDirs, nil
 		}
-		path = cwd
+
+		for _, entry := range entries {
+			entryPath := filepath.Join(validPath, entry.Name())
+			if entry.Type()&os.ModeSymlink != 0 && followSymlinks {
+				linkDest, err := filepath.EvalSymlinks(entryPath)
+				if err == nil && fs.isPathInAllowedDirs(linkDest) {
+					entryPath = linkDest
+				}
+			}
+
+			child, subFiles, subDirs, err := fs.buildFileTreeWithTotals(entryPath, maxDepth, currentDepth+1, followSymlinks)
+			if err == nil {
+				node.Children = append(node.Children, child)
+				totalFiles += subFiles
+				totalDirs += subDirs
+			}
+		}
 	}
 
-	// Extract depth parameter (optional, default: 3)
-	depth := 3 // Default value
-	if depthParam, err := request.RequireFloat("max_depth"); err == nil {
-		depth = int(depthParam)
-	}
-
-	// Extract follow_symlinks parameter (optional, default: false)
-	followSymlinks := false // Default value
-	if followParam, err := request.RequireBool("follow_symlinks"); err == nil {
-		followSymlinks = followParam
-	}
-
-	// Validate the path is within allowed directories
-	validPath, err := fs.validatePath(path)
-	if err != nil {
-		return &mcp.CallToolResult{
-			Content: []mcp.Content{
-				mcp.TextContent{
-					Type: "text",
-					Text: fmt.Sprintf("Error: %v", err),
-				},
-			},
-			IsError: true,
-		}, nil
-	}
-
-	// Check if it's a directory
-	info, err := os.Stat(validPath)
-	if err != nil {
-		return &mcp.CallToolResult{
-			Content: []mcp.Content{
-				mcp.TextContent{
-					Type: "text",
-					Text: fmt.Sprintf("Error: %v", err),
-				},
-			},
-			IsError: true,
-		}, nil
-	}
-
-	if !info.IsDir() {
-		return &mcp.CallToolResult{
-			Content: []mcp.Content{
-				mcp.TextContent{
-					Type: "text",
-					Text: fmt.Sprintf("Error: The specified path is not a directory. path=%s", path),
-				},
-			},
-			IsError: true,
-		}, nil
-	}
-
-	// Build the directoryTree structure
-	fileTree, err := fs.buildDirectoryTree(validPath, depth, 0, followSymlinks)
-	if err != nil {
-		return &mcp.CallToolResult{
-			Content: []mcp.Content{
-				mcp.TextContent{
-					Type: "text",
-					Text: fmt.Sprintf("Error building directory tree: %v: validPath=%s, depth=%d, followSymLinks=%t", err, validPath, depth, followSymlinks),
-				},
-			},
-			IsError: true,
-		}, nil
-	}
-
-	// Convert to JSON
-	jsonData, err := json.MarshalIndent(fileTree, "", "  ")
-	if err != nil {
-		return &mcp.CallToolResult{
-			Content: []mcp.Content{
-				mcp.TextContent{
-					Type: "text",
-					Text: fmt.Sprintf("Error generating JSON: %v", err),
-				},
-			},
-			IsError: true,
-		}, nil
-	}
-
-	// Create resource URI for the directory
-	resourceURI := pathToResourceURI(validPath)
-
-	// Return the result
-	return &mcp.CallToolResult{
-		Content: []mcp.Content{
-			mcp.TextContent{
-				Type: "text",
-				Text: fmt.Sprintf("Directory tree for %s (max depth: %d):\n\n%s", validPath, depth, string(jsonData)),
-			},
-			mcp.EmbeddedResource{
-				Type: "resource",
-				Resource: mcp.TextResourceContents{
-					URI:      resourceURI,
-					MIMEType: "application/json",
-					Text:     string(jsonData),
-				},
-			},
-		},
-	}, nil
+	return node, totalFiles, totalDirs, nil
 }
 
-// buildTree creates a hierarchical view of directories only, including file counts.
-func (fs *FilesystemHandler) buildDirectoryTree(path string, maxDepth int, currentDepth int, followSymlinks bool) (*DirectoryNode, error) {
-	// Validate the path using existing handler logic
+// buildDirectoryTreeWithTotals builds a directory-only tree with file counts per directory and global totals.
+func (fs *FilesystemHandler) buildDirectoryTreeWithTotals(path string, maxDepth int, currentDepth int, followSymlinks bool) (*DirectoryNode, int, int, error) {
 	validPath, err := fs.validatePath(path)
 	if err != nil {
-		return nil, err
+		return nil, 0, 0, err
 	}
 
-	// Get info for the current path
 	info, err := os.Stat(validPath)
 	if err != nil {
-		return nil, err
+		return nil, 0, 0, err
 	}
 
-	// If the root provided isn't a directory, we can't build a directory tree
 	if !info.IsDir() {
-		return nil, fmt.Errorf("path is not a directory: %s", validPath)
+		return nil, 0, 0, fmt.Errorf("not a directory")
 	}
 
-	// Initialize the node for the current directory
 	node := &DirectoryNode{
 		Name:     filepath.Base(validPath),
 		Path:     validPath,
+		Modified: info.ModTime(),
 		Children: []*DirectoryNode{},
 	}
 
-	// Read directory entries to count files and find sub-directories
 	entries, err := os.ReadDir(validPath)
 	if err != nil {
-		return nil, err
+		return node, 0, 1, nil
 	}
 
-	fileCount := 0
+	localFiles := 0
+	totalFiles := 0
+	totalDirs := 1
+
 	for _, entry := range entries {
 		entryPath := filepath.Join(validPath, entry.Name())
 		isDir := entry.IsDir()
 
-		// Handle symlink resolution if enabled
 		if entry.Type()&os.ModeSymlink != 0 && followSymlinks {
-			resolvedPath, err := filepath.EvalSymlinks(entryPath)
-			if err == nil && fs.isPathInAllowedDirs(resolvedPath) {
-				linkInfo, err := os.Stat(resolvedPath)
-				if err == nil {
-					isDir = linkInfo.IsDir()
-					entryPath = resolvedPath
+			res, err := filepath.EvalSymlinks(entryPath)
+			if err == nil && fs.isPathInAllowedDirs(res) {
+				if s, err := os.Stat(res); err == nil {
+					isDir = s.IsDir()
+					entryPath = res
 				}
 			}
 		}
 
 		if !isDir {
-			// Increment count for files
-			fileCount++
+			localFiles++
+			totalFiles++
 		} else if currentDepth < maxDepth {
-			// Recursively process sub-directories if depth permits
-			childNode, err := fs.buildDirectoryTree(entryPath, maxDepth, currentDepth+1, followSymlinks)
-			if err == nil && childNode != nil {
-				node.Children = append(node.Children, childNode)
+			child, subFiles, subDirs, err := fs.buildDirectoryTreeWithTotals(entryPath, maxDepth, currentDepth+1, followSymlinks)
+			if err == nil {
+				node.Children = append(node.Children, child)
+				totalFiles += subFiles
+				totalDirs += subDirs
 			}
+		} else {
+			totalDirs++
 		}
 	}
 
-	node.FileCount = int64(fileCount)
-	return node, nil
+	node.FileCount = int64(localFiles)
+	return node, totalFiles, totalDirs, nil
+}
+
+// Internal helper for mcp error formatting
+func errorResult(err error) *mcp.CallToolResult {
+	return &mcp.CallToolResult{
+		Content: []mcp.Content{mcp.TextContent{Type: "text", Text: fmt.Sprintf("Error: %v", err)}},
+		IsError: true,
+	}
 }

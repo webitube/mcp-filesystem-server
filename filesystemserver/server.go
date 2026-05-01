@@ -134,7 +134,7 @@ func NewFilesystemServer(allowedDirs []string) (*server.MCPServer, error) {
 
 	s.AddTool(mcp.NewTool(
 		"file_tree",
-		mcp.WithDescription("Returns a hierarchical JSON representation of the entire file/directory tree starting at the given root path. Note: For large numbers of files, this can easily exceed the context size."),
+		mcp.WithDescription("Returns a hierarchical JSON representation of the entire file tree starting at the given starting path. Note: For large numbers of files, this can easily exceed the context size."),
 		mcp.WithString("starting_path",
 			mcp.Description("Starting Path of the file/directory tree to traverse"),
 			mcp.Required(),
@@ -149,7 +149,7 @@ func NewFilesystemServer(allowedDirs []string) (*server.MCPServer, error) {
 
 	s.AddTool(mcp.NewTool(
 		"directory_tree",
-		mcp.WithDescription("Returns a hierarchical JSON representation of the entire directory tree starting at the given directory. Note: Each directory node will contain the number of files in the folder."),
+		mcp.WithDescription("Returns a hierarchical JSON representation of the entire directory tree starting at the given starting path. Note: Each directory node will contain the number of files in the folder."),
 		mcp.WithString("starting_path",
 			mcp.Description("Starting Path of the directory tree to traverse"),
 			mcp.Required(),
